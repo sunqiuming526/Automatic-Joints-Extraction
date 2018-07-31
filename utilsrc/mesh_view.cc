@@ -18,6 +18,8 @@ Simple viewer
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <fstream>
+#include <sstream>
 #ifdef __APPLE__
 # include <GLUT/glut.h>
 #else
@@ -31,6 +33,7 @@ using namespace trimesh;
 
 
 // Globals
+
 static const char myname[] = "mesh_view";
 vector<TriMesh *> meshes;
 vector<xform> xforms;
@@ -383,12 +386,13 @@ void redraw()
 	glPushMatrix();
 	glPointSize(5.0f);    //修改点的尺寸，默认大小为1.0f
 	glBegin(GL_POINTS);
+	glColor3f(1.0f, 0.0f, 0.0f);
 	glVertex3f(meshes[0]->vertices[0][0], meshes[0]->vertices[0][1], meshes[0]->vertices[0][2]);
-	glVertex3f(meshes[0]->vertices[1][0], meshes[0]->vertices[1][1], meshes[0]->vertices[1][2]);
+	glColor3f(1.0f, 1.0f, 1.0f);
+
 	for (int i = 0; i < cpoints.size(); i++)
 	{
 	 glVertex3f(cpoints[i][0],cpoints[i][1],cpoints[i][2]);
-	 // std::cout << "rendering cpoints: "<< cpoints[i] << std::endl;
 	}
 	glEnd();
 	glPopMatrix();
@@ -876,16 +880,14 @@ float dist(TriMesh* themesh, int i, int j)
 						+ pow(themesh->vertices[i][2] - themesh->vertices[j][2], 2));
 }
 
-void DJ(TriMesh* themesh, int start, float** dist_mat)
+int DJ(TriMesh* themesh, int start, float** dist_mat)
 {
 	// Initialization
 
 	int vertex_max = themesh->vertices.size();
 	int face_max = themesh->faces.size();
 
-	// float dist_mat[vertex_max][vertex_max];
-	bool flag[vertex_max];
-	int flag_count = vertex_max;
+	bool flag[vertex_max] = {0} ;
 
 	float dist[vertex_max] = {999};
 	// =====================================================
@@ -896,10 +898,6 @@ void DJ(TriMesh* themesh, int start, float** dist_mat)
 	}
 	dist[start] = 0;
 	flag[start] = 1;
-	flag_count--;
-
-
-	std::cout << dist_mat[671][672] << std::endl;
 
 
 	//===================================================================================
@@ -907,6 +905,7 @@ void DJ(TriMesh* themesh, int start, float** dist_mat)
 	float min;
 	float tmp;
 	int k = 0;
+
 	for (int i = 1; i < vertex_max; i++)
 	{
 		min = 999;
@@ -920,9 +919,14 @@ void DJ(TriMesh* themesh, int start, float** dist_mat)
             k = j;
         }
     }
-		// if (k==671)
-		 // std::cout << k << ", " << flag[k]<< std::endl;
+		// std::cout << k << std::endl;
+
 		flag[k] = 1; // K is of the shortest path
+
+
+
+
+
 
 		// update the remaining distant
 
@@ -938,13 +942,15 @@ void DJ(TriMesh* themesh, int start, float** dist_mat)
 					// std::cout << "k: " << k << " + j: " << j << "=> " << tmp << std::endl;
       }
     }
+
 	}
+
 	// std::cout << "dijkstra " << themesh->vertices[start] << std::endl;
 	float dmax = 0;
 	int imax = 0;
   for (int i = 0; i < vertex_max; i++)
 		{
-			 // std::cout << dist[i] << std::endl;
+			// std::cout << dist[i] << std::endl;
 			if (dist[i] > dmax)
 			{
 				dmax = dist[i];
@@ -952,80 +958,12 @@ void DJ(TriMesh* themesh, int start, float** dist_mat)
 			}
 		}
 
-	// cpoints.push_back(themesh->vertices[imax]);
-	for (int i = 0; i < vertex_max; i++)
-	{
-		if (dist[i] != 999)
-			{
-		 	cpoints.push_back(themesh->vertices[i]);
 
-		}
-	}
+	cpoints.push_back(themesh->vertices[imax]);
+	return imax;
 
 	// std::cout << "dist: " << dist[1] << std::endl;
 }
-
-// int main(int argc, char *argv[])
-// {
-// 	for (int i = 1; i < argc; i++) {
-// 			if (!strcmp(argv[i], "-grab")) {
-// 				grab_only = true;
-// 				continue;
-// 			}
-// 			const char *filename = argv[i];
-// 			TriMesh *themesh = TriMesh::read(filename);
-// 			if (!themesh)
-// 				usage();
-// 			meshes.push_back(themesh);
-// 			xforms.push_back(xform());
-// 			visible.push_back(false);
-// 			filenames.push_back(filename);
-// 		}
-// 		if (meshes.empty())
-// 			usage();
-// 		// ================================================
-// 		const int vertex_max = meshes[0]->vertices.size();
-// 		const int face_max = meshes[0]->faces.size();
-// 		float** adjacent_mat = new float*[vertex_max]();
-// 		for (int i = 0; i < vertex_max; i++)
-// 		{
-// 			adjacent_mat[i] = new float[vertex_max]();
-// 		}
-//
-// 		// Initialize the adjacent_mat
-// 		// set the origin value to 999
-// 		for (int i = 0; i < vertex_max; i++)
-// 		{
-// 			for (int j = 0; j < vertex_max; j++)
-// 			{
-// 				adjacent_mat[i][j] = 999;
-// 			}
-// 		}
-// 		// update the connected edges
-// 		for(int i = 0; i < face_max; i++)
-// 		{
-// 			int a = meshes[0]->faces[i][0];
-// 			int b = meshes[0]->faces[i][1];
-// 			int c = meshes[0]->faces[i][2];
-// 			// std::cout << themesh->faces[i] << std::endl;
-//
-// 			adjacent_mat[a][b] = dist(meshes[0], a, b);
-// 			adjacent_mat[b][a] = dist(meshes[0], a, b);
-//
-// 			adjacent_mat[a][c] = dist(meshes[0], a, c);
-// 			adjacent_mat[c][a] = dist(meshes[0], a, c);
-//
-// 			adjacent_mat[b][c] = dist(meshes[0], c, b);
-// 			adjacent_mat[c][b] = dist(meshes[0], c, b);
-// 		}
-// 		DJ(meshes[0], 0, adjacent_mat);
-//
-// }
-
-
-
-
-
 
 
 
@@ -1074,7 +1012,7 @@ int main(int argc, char *argv[])
 	if (meshes.empty())
 		usage();
 
-#pragma omp parallel for
+// #pragma omp parallel for
 	for (size_t i = 0; i < meshes.size(); i++) {
 		meshes[i]->need_tstrips();
 		// meshes[i]->clear_grid();
@@ -1098,11 +1036,8 @@ int main(int argc, char *argv[])
 
 	for (int i = 0; i < vertex_max; i++)
 	{
-		std::cout << "check" << std::endl;
-
 		adjacent_mat[i] = new float[vertex_max]();
 	}
-	std::cout << "!!!" << std::endl;
 
 
 	// Initialize the adjacent_mat
@@ -1121,8 +1056,6 @@ int main(int argc, char *argv[])
 		int b = meshes[0]->faces[i][1];
 		int c = meshes[0]->faces[i][2];
 		// std::cout << meshes[0]->faces[i] << std::endl;
-		if (b == 670)
-			std::cout << c << std::endl;
 
 		adjacent_mat[a][b] = dist(meshes[0], a, b);
 		adjacent_mat[b][a] = dist(meshes[0], a, b);
@@ -1134,8 +1067,12 @@ int main(int argc, char *argv[])
 		adjacent_mat[c][b] = dist(meshes[0], c, b);
 	}
 
+
 	DJ(meshes[0], 0, adjacent_mat);
+	// DJ(meshes[0], 500, adjacent_mat);
+	// DJ(meshes[0], 0, adjacent_mat);
 	// ================================================================
+
 
 	glutCreateWindow(myname);
 	glutDisplayFunc(redraw);
