@@ -23,6 +23,8 @@ Simple viewer
 #include <highgui.h>
 #include <opencv2/core/core.hpp>
 #include <fstream>
+#include<queue>
+
 
 #ifdef __APPLE__
 # include <GLUT/glut.h>
@@ -1076,6 +1078,12 @@ point cross(const point& x, const point& y)
                 x[2]*y[0]-x[0]*y[2],
                 x[0]*y[1]-x[1]*y[0]};
 }
+
+float dot(point x, point y)
+{
+	return x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+}
+
 float norm(point x)
 {
 	return sqrt(pow(x[0], 2) + pow(x[1], 2) + pow(x[2], 2));
@@ -1096,7 +1104,7 @@ float dist(TriMesh* themesh, int i, int j)
 						+ pow(themesh->vertices[i][2] - themesh->vertices[j][2], 2));
 }
 
-float DIST(point x, point y)
+float dist(point x, point y)
 {
 	return sqrt(pow(x[0] - y[0], 2)
 						+ pow(x[1] - y[1], 2)
@@ -1114,61 +1122,64 @@ float circle_like(float area, float peri)
 {
 	return (4 * 3.14 * area / (peri * peri));
 }
-int DJ(TriMesh* themesh, int start, float** dist_mat, float* sum_dist, bool M, float* morse_head = NULL)
+
+struct pq_elem
+{
+	int id;
+	float val;
+	pq_elem(int x, float y)
+	{
+		id = x;
+		val = y;
+	}
+	bool operator <(const pq_elem& b)const
+		{return val > b.val;}
+};
+
+int DJ(TriMesh* themesh, int start, float** dist_mat, float* sum_dist, bool M, float** morse_p = NULL, int id = 0)
 {
 	// Initialization
 
 	int vertex_max = themesh->vertices.size();
-	// int face_max = themesh->faces.size();
-
 	bool flag[vertex_max] = {0} ;
+	float dist[vertex_max];
+	for(int i = 0; i < vertex_max; i++)
+		dist[i] = 999; // initialize dist[] to 999
 
-	float dist[vertex_max] = {999};
+	priority_queue<pq_elem> pq;
 	// =====================================================
-	for (int s = 0; s < vertex_max; s++)
-	{
-		// U.push_back(it);
-		dist[s] = dist_mat[start][s];
-	}
+	// for (int s = 0; s < vertex_max; s++)
+	// {
+	// 	// U.push_back(it);
+	// 	dist[s] = dist_mat[start][s];
+	// }
 	dist[start] = 0;
-	flag[start] = 1;
+	// flag[start] = 1;
 
+ 	pq_elem e = pq_elem(start, 0);
+	pq.push(e);
 
-	//===================================================================================
-	// Update the distant
-	float min;
-	float tmp;
-	int k = 0;
-
-	for (int i = 1; i < vertex_max; i++)
+// Update the shortest distance
+	int counter = 0;
+	while(pq.empty() != true || counter < vertex_max)
 	{
-		min = 999;
-		// find the point of the shortest path
-		for (int j = 0; j < vertex_max; j++)
-    {
+		pq_elem u = pq.top();
+		pq.pop();
+		if (flag[u.id]) continue;
+		flag[u.id] = 1;
+		counter++;
+		for(int i = 0; i < vertex_max; i++) if (!flag[i])
+		{
+			float tmp = u.val + dist_mat[u.id][i];
+			if (tmp < dist[i])
+			{
+				dist[i] = tmp;
+				pq.push(pq_elem(i, dist[i]));
+			}
 
-        if (flag[j] == 0 && dist[j] < min)
-        {
-            min = dist[j];
-            k = j;
-        }
-    }
-
-		flag[k] = 1; // K is of the shortest path
-
-		// update the remaining distant
-
-		for (int j = 0; j < vertex_max; j++)
-    {
-      tmp = (dist_mat[k][j]==999 ? 999 : (min + dist_mat[k][j])); // 防止溢出
-			// if(j == 671 && dist_mat[k][j]!=999)
-      if (flag[j] == 0 && (tmp  < dist[j]) )
-      {
-          dist[j] = tmp;
-
-      }
-    }
+		}
 	}
+
 	// sum_dist is the sum of distance of point_i to all the points in set V, where V is the characteristic points set.
 	if (M == true)
 		for (int i = 0; i < vertex_max; i++)
@@ -1177,8 +1188,7 @@ int DJ(TriMesh* themesh, int start, float** dist_mat, float* sum_dist, bool M, f
 	// if the source point is head, then set the morse_head function
 	if (M == true)
 		for (int i = 0; i < vertex_max; i++)
-			morse_head[i] = dist[i];
-
+			morse_p[id][i] = dist[i];
 	// return the point of the max distance
 	float dmax = 0;
 	int imax = 0;
@@ -1186,10 +1196,19 @@ int DJ(TriMesh* themesh, int start, float** dist_mat, float* sum_dist, bool M, f
 	{
 		for (int i = 0; i < vertex_max; i++)
 		{
+			bool f = 1;
 			if (sum_dist[i] > dmax)
 			{
-				dmax = sum_dist[i];
-				imax = i;
+				for(int j = 0; j < id + 1; j++)
+				{
+					if (morse_p[j][i] < 0.8)
+						f = 0;
+				}
+				if (f == 1)
+				{
+					dmax = sum_dist[i];
+					imax = i;
+				}
 			}
 		}
 	}
@@ -1202,9 +1221,6 @@ int DJ(TriMesh* themesh, int start, float** dist_mat, float* sum_dist, bool M, f
 				imax = i;
 			}
 		}
-
-
-
 
 	cpoints.push_back(themesh->vertices[imax]);
 	return imax;
@@ -1305,13 +1321,6 @@ void extracting(float step, int level, float* morse, std::vector<bodypart>& body
 			if (morse[x] <= bi && morse[y] > bi && morse[z] > bi)
 			{
 
-				// if (x == 6396 && y == 6163 || x == 6396 && z == 6163 || y == 6396 && x == 6163 || y == 6396 && z == 6163 || z == 6396 && x == 6163 || z == 6396 && y == 6163)
-				// 	{
-				// 		std::cout << "regular: " << x << " " << y << " " << z  << std::endl;
-				// 		std::cout << morse[x] << " " << morse[y] << " " << morse[z] << " bi:" << bi << std::endl;
-				// 	}
-				// std::cout << x << ", " << y << ", " << z << std::endl;
- 				// first check whether the edge has been processed
 				reeb_point new_rp1, new_rp2;
 				int chc1 = check(edge_process, x, y); // For a processed edge, chc1 is the index
 
@@ -1347,36 +1356,28 @@ void extracting(float step, int level, float* morse, std::vector<bodypart>& body
 				}
 				else
 					new_rp2 = RP[chc2];
-				// std::cout << "chc: " << chc1 << ", " << chc2 << std::endl;
 				 if (chc1 == -1)
 				 {
 					 new_rp1.neib1 = new_rp2.index;
 					 RP.push_back(new_rp1);
-					 // if (new_rp1.index == 122)
-					 	// std::cout << x << " " << y << ": " << new_rp1.index << std::endl;
-					 // std::cout << new_rp1.index << " +neib: " << new_rp1.neib1 << std::endl;
+
 				 }
 				 else
 				 {
 					 RP[chc1].neib2 = new_rp2.index;
-					 // if (chc1 == 122)
-						 // std::cout << x << " * " << y << ": " << RP[chc1].index << std::endl;
+					 // if (chc1 == 352)
+						//  std::cout << x << " * " << y << ": " << RP[chc1].index << std::endl;
 						// std::cout << new_rp1.index << " +neib: " << new_rp1.neib1 << std::endl;
 				 }
 				 if (chc2 == -1)
 				 {
 					 new_rp2.neib1 = new_rp1.index;
 					 RP.push_back(new_rp2);
-					 // if (new_rp2.index == 122)
-					 	// std::cout << x << " " << y << ": " << new_rp2.index << std::endl;
-					 // std::cout << new_rp2.index << " +neib: " << new_rp2.neib1 << std::endl;
+
 				 }
 				 else
 				 {
 						RP[chc2].neib2 = new_rp1.index;
-						// if (chc2 == 122)
-						// std::cout << x << " * " << y << ": " << RP[chc2].index << std::endl;
-						// std::cout << new_rp2.index << " +neib: " << new_rp2.neib1 << std::endl;
 				}
 
 			}
@@ -1386,9 +1387,6 @@ void extracting(float step, int level, float* morse, std::vector<bodypart>& body
 			//  =====================
 			else if (morse[x] <= bi && morse[y] <= bi && morse[z] > bi)
 			{
-				// if (x == 6396 && y == 6163 || x == 6396 && z == 6163 || y == 6396 && x == 6163 || y == 6396 && z == 6163 || z == 6396 && x == 6163 || z == 6396 && y == 6163)
-					// std::cout << "invert: " << x << " " << y << " " << z  << std::endl;
-				// first check whether the edge has been processed
 				reeb_point new_rp1, new_rp2;
 				int chc1 = check(edge_process, y, z); // For a processed edge, chc1 is the index
 				if (chc1 == -1)
@@ -1426,31 +1424,20 @@ void extracting(float step, int level, float* morse, std::vector<bodypart>& body
 				{
 					new_rp1.neib1 = new_rp2.index;
 					RP.push_back(new_rp1);
-					// if (new_rp1.index == 122)
-					 // std::cout << x << " " << y << ": " << new_rp1.index << std::endl;
-					// std::cout << new_rp1.index << " +neib: " << new_rp1.neib1 << std::endl;
+
 				}
 				else
 				{
-					// if (chc1 == 122)
-					 // std::cout << x << " * " << y << ": " << RP[chc1].index << std::endl;
 					RP[chc1].neib2 = new_rp2.index;
-					 // std::cout << new_rp1.index << " +neib: " << new_rp1.neib1 << std::endl;
 				}
 				if (chc2 == -1)
 				{
 					new_rp2.neib1 = new_rp1.index;
 					RP.push_back(new_rp2);
-					// if (new_rp2.index == 122)
-					 // std::cout << x << " " << y << ": " << new_rp2.index << std::endl;
-					// std::cout << new_rp2.index << " +neib: " << new_rp2.neib1 << std::endl;
 				}
 				else
 				{
 					 RP[chc2].neib2 = new_rp1.index;
-					 // if (chc2 == 122)
- 					 // std::cout << x << " * " << y << ": " << RP[chc2].index << std::endl;
-					 // std::cout << new_rp2.index << " +neib: " << new_rp2.neib1 << std::endl;
 			 }
 		 }
 	 }
@@ -1476,12 +1463,11 @@ void extracting(float step, int level, float* morse, std::vector<bodypart>& body
 		bool flag = 1;
 		for (int i = 0; i < RP.size(); i++)
 		{
-			// std::cout << "i:" << i << RP[i].neib1 << " | " << RP[i].neib2 << std::endl;
+			// std::cout << "i:" << i <<"  " << RP[i].neib1 << " | " << RP[i].neib2 << std::endl;
 		}
 
 		while (flag)
 		{
-			// std::cout << next << std::endl;
 			// Since each point has two neighbors, this part identify which neighbor should be choosed as the next node.
 			if(RP[next].neib1 != prev )
 			{
@@ -1514,8 +1500,6 @@ void extracting(float step, int level, float* morse, std::vector<bodypart>& body
 					}
 				}
 			}
-			// std::cout << "end" << std::endl;
-
 		}
 
 		// Calculate the centroid of each layer
@@ -1634,7 +1618,35 @@ float get_morse_max(float* morse, int* ind)
 	return max;
 }
 
+float line_intersect(point x, point y, point dx, point dy)
+{
+	// t = (((m_leg[0] - m_leg[1]) - (l_hip_[0] - l_hip_[1]))/(left[0] - left[1])
+	// 				- ((m_leg[1] - m_leg[2]) - (l_hip_[1] - l_hip_[2]))/(left[1] - left[2]))
+	// 				/ ((l_dir[0] - l_dir[1]) / (left[0] - left[1]) - (l_dir[1] - l_dir[2]) / (left[1] - left[2]));
+	float t = (((x[0] - x[1]) - (y[0] - y[1])) / (dx[0] - dx[1])
+			- ((x[1] - x[2]) - (y[1] - y[2])) / (dx[1] - dx[2]))
+			/ ((dy[0] - dy[1]) / (dx[0] - dx[1]) - (dy[1] - dy[2]) / (dx[1] - dx[2]));
+	return t;
+}
 
+float dist_point_line(point p, point o, point d)
+{
+	point d2 = p - o;
+	float cosine = dot(d2, d)/(norm(d2)*norm(d));
+	float sine = sqrt(1 - pow(cosine, 2));
+	// std::cout << "dist: " <<dist(p, o) * sine << std::endl;
+	if ( dist(p, o) * sine >= 0)
+		return dist(p, o) * sine;
+	else
+		return 0;
+}
+
+point project(point ori, point np, float D)
+{
+	float t = (np[0] * ori[0] + np[1] * ori[1] + np[2] * ori[2] + D) / (pow(np[0],2) + pow(np[1],2) + pow(np[2],2));
+	point ori_ = ori - t * np;
+	return ori_;
+}
 
 int main(int argc, char *argv[])
 {
@@ -1699,7 +1711,8 @@ int main(int argc, char *argv[])
 			draw_flat = false;
 	}
 
-	// joints.push_back(meshes[0]->vertices[6396]);
+	// joints.push_back(meshes[0]->vertices[50]);
+	// joints.push_back(meshes[0]->vertices[11421]);
 
 // ================================================
 // 										MY PART
@@ -1753,35 +1766,35 @@ int main(int argc, char *argv[])
 	float morse_3[vertex_max] = {0};
 	float morse_4[vertex_max] = {0};
 	float morse_5[vertex_max] = {0};
+	float *morse_p[5] = {morse_1, morse_2, morse_3, morse_4, morse_5};
+	std::cout << "start" << std::endl;
 	last = DJ(meshes[0], 0, adjacent_mat, sum_dist, false);
-	// source point is the head
 	int ind1 = last;
-	last = DJ(meshes[0], last, adjacent_mat, sum_dist, true, morse_1);
+	last = DJ(meshes[0], last, adjacent_mat, sum_dist, true, morse_p, 0);
 	int ind2 = last;
-	last = DJ(meshes[0], last, adjacent_mat, sum_dist, true, morse_2);
+	last = DJ(meshes[0], last, adjacent_mat, sum_dist, true, morse_p, 1);
 	int ind3 = last;
-	last = DJ(meshes[0], last, adjacent_mat, sum_dist, true, morse_3);
+	last = DJ(meshes[0], last, adjacent_mat, sum_dist, true, morse_p, 2);
 	int ind4 = last;
-	// const float L = morse_l_hand[last];
-	// normalize(morse_head, vertex_max, amax, L);
-	// normalize(morse_r_foot, vertex_max, bmax, L);
-	// normalize(morse_l_hand, vertex_max, morse_l_hand[last], L);
-	last = DJ(meshes[0], last, adjacent_mat, sum_dist, true, morse_4);
+	last = DJ(meshes[0], last, adjacent_mat, sum_dist, true, morse_p, 3);
 	int ind5 = last;
-	// normalize(morse_r_hand, vertex_max, morse_r_hand[last], L);
-	last = DJ(meshes[0], last, adjacent_mat, sum_dist, true, morse_5);
-	// normalize(morse_l_foot, vertex_max, morse_l_foot[last], L);
-	// =====================================================
-	// for(int i =0; i < vertex_max; i++)
-	// 	std::cout << morse_head[i] << std::endl;
-	// Set the distance step
-	// int level = level;
-	// std::vector<levelset> LS;
+	last = DJ(meshes[0], last, adjacent_mat, sum_dist, true, morse_p, 4);
 
-	// for (int i = 0; i < vertex_max; i ++)
+
+	//
+	// for(int i = 0; i < vertex_max; i++)
 	// {
-	// 	std::cout << i << ": " << morse_head[i] << std::endl;
+	// 	if(morse_3[i] == 0)
+	// 		std::cout << "i: " << i << std::endl;
 	// }
+	// std::cout << ind5 << '\n';
+	// std::cout << sum_dist[50] << '\n';
+	// std::cout << sum_dist[11421] << '\n';
+
+	std::cout << "finish DJ" << std::endl;
+
+	// =====================================================
+
 	// ==== identify the head ======
 
 	int charac[5] = {ind1, ind2, ind3, ind4, ind5};
@@ -1804,7 +1817,6 @@ int main(int argc, char *argv[])
 		{
 			limb_ind.push_back(i);
 			limb_dist.push_back(morse_head[charac[i]]);
-
 		}
 	}
 
@@ -1826,31 +1838,16 @@ int main(int argc, char *argv[])
 	morse_r_foot = mor[leg_ind[1]];
 
 	float L = morse_l_hand[right_hand];
-	std::cout << get_morse_max(morse_head, charac) << std::endl;
-	std::cout << get_morse_max(morse_l_hand, charac) << std::endl;
-	std::cout << get_morse_max(morse_r_hand, charac) << std::endl;
-	std::cout << get_morse_max(morse_l_foot, charac) << std::endl;
-	std::cout << get_morse_max(morse_r_foot, charac) << std::endl;
 
 	normalize(morse_head, vertex_max, get_morse_max(morse_head, charac), L);
-	// normalize(morse_l_foot, vertex_max, get_morse_max(morse_l_foot, charac), L);
-	// normalize(morse_r_foot, vertex_max, get_morse_max(morse_r_foot, charac), L);
 
-
-	std::cout << "L: " << L << std::endl;
 	float step = L / 200;
-	std::cout << "0" << std::endl;
 	extracting(step, 140, morse_head, trunk, LS_trunk);
-	std::cout << "1" << std::endl;
 	extracting(step, 90, morse_l_hand, l_arm, LS_l_arm);
-	std::cout << "2" << std::endl;
 	extracting(step, 90, morse_r_hand, r_arm, LS_r_arm);
-	std::cout << "3" << std::endl;
-	extracting(step, 120, morse_l_foot, l_leg, LS_l_leg);
-	std::cout << "4" << std::endl;
-	extracting(step, 120, morse_r_foot, r_leg, LS_r_leg);
-	std::cout << "5" << std::endl;
-	//
+	extracting(step, 120,  morse_l_foot, l_leg, LS_l_leg);
+	extracting(step, 120,  morse_r_foot, r_leg, LS_r_leg);
+
 	point O;
 	point M;
 	point m_hip;
@@ -1892,6 +1889,35 @@ int main(int argc, char *argv[])
 	}
 
 
+	// // Identify Left & Right
+	float* tmp1 = NULL;
+	std::vector<bodypart> tmp2;
+
+	point MO = O - M;
+	point face_direc = meshes[0]->vertices[right_foot] - r_leg[89].cen;
+	point left_direc = cross(MO, face_direc);
+	std::cout << "here" << std::endl;
+	if(dot(meshes[0]->vertices[right_hand] - O, left_direc) > 0)
+	{
+		tmp1 = morse_l_hand;
+		morse_l_hand = morse_r_hand;
+		morse_r_hand = tmp1;
+		tmp2 = l_arm;
+		l_arm = r_arm;
+		r_arm = tmp2;
+	}
+	if(dot(meshes[0]->vertices[right_foot] - M, left_direc) > 0)
+	{
+		tmp1 = morse_l_foot;
+		morse_l_foot = morse_r_foot;
+		morse_r_foot = tmp1;
+		tmp2 = l_leg;
+		l_leg = r_leg;
+		r_leg = tmp2;
+	}
+
+
+
 	int r_start = 0;
 
 	for(int i = 0; i < r_arm.size(); i++)
@@ -1903,8 +1929,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	point N = r_arm[89].cen - l_arm[89].cen;
-	point MO = O - M;
+	point N = l_arm[89].cen - r_arm[89].cen;
 	point delta = cross(MO, cross(N, MO)) / norm(cross(MO, cross(N, MO))); //往人体的左，镜像的右
 
 	// E F => 锁骨
@@ -1933,7 +1958,6 @@ int main(int argc, char *argv[])
 
 	for(int i = 0; i < r_arm.size(); i ++)
 	{
-		// std::cout <<  r_arm[i].m << ", " << 0.25*L << std::endl;
 		if(r_arm[i].m <= 0.285 * L && r_arm[i + 1].m > 0.285 * L)
 		{
 			joints.push_back(r_arm[i].cen);
@@ -1953,41 +1977,100 @@ int main(int argc, char *argv[])
 	point l_ankle;
 	point r_ankle;
 
+
+
+	// Based on distance 求脚踝ankle位置
+	int l_ankle_start = 0;
+	int l_ankle_end = 0;
+	int r_ankle_start = 0;
+	int r_ankle_end = 0;
+	for(int i = 0; i < l_arm.size(); i ++)
+	{
+		if(l_leg[i].m <= 0.1 * L && l_leg[i + 1].m > 0.1 * L)
+			l_ankle_start = i;
+		if(l_leg[i].m <= 0.225 * L && l_leg[i + 1].m > 0.225 * L)
+			l_ankle_end = i;
+	}
+	for(int i = 0; i < r_arm.size(); i ++)
+	{
+		if(r_leg[i].m <= 0.1 * L && r_leg[i + 1].m > 0.1 * L)
+			r_ankle_start = i;
+		if(r_leg[i].m <= 0.225 * L && r_leg[i + 1].m > 0.225 * L)
+			r_ankle_end = i;
+	}
+	priority_queue<pq_elem> ankle_q;
+	// find left ankle
+	for (int i = l_ankle_start; i < l_ankle_end; i++ )
+	{
+		float dist_sum = 0;
+		point d_P1P = l_leg[l_ankle_start].cen - l_leg[i].cen;
+		point d_P2P = l_leg[l_ankle_end].cen - l_leg[i].cen;
+		for(int j = l_ankle_start; j < i; j++)
+		{
+			dist_sum += dist_point_line(l_leg[j].cen, l_leg[i].cen, d_P1P);
+		}
+		for(int j = i; j < l_ankle_end; j++)
+		{
+			dist_sum += dist_point_line(l_leg[j].cen, l_leg[i].cen, d_P2P);
+		}
+		ankle_q.push(pq_elem(i, dist_sum));
+	}
+	int lll =ankle_q.top().id;
+	l_ankle = l_leg[lll].cen;
+	joints.push_back(l_ankle);
+
+// find right ankle
+	priority_queue<pq_elem> ankle_q2;
+	for (int i = r_ankle_start; i < r_ankle_end; i++ )
+	{
+		float dist_sum = 0;
+		point d_P1P = r_leg[r_ankle_start].cen - r_leg[i].cen;
+		point d_P2P = r_leg[r_ankle_end].cen - r_leg[i].cen;
+		for(int j = r_ankle_start; j < i; j++)
+		{
+			dist_sum += dist_point_line(r_leg[j].cen, r_leg[i].cen, d_P1P);
+		}
+		for(int j = i; j < r_ankle_end; j++)
+		{
+			dist_sum += dist_point_line(r_leg[j].cen, r_leg[i].cen, d_P2P);
+		}
+		ankle_q2.push(pq_elem(i, dist_sum));
+	}
+	int rrr =ankle_q2.top().id;
+	r_ankle = r_leg[rrr].cen;
+	joints.push_back(r_ankle);
+	// find kneee
+	point l_knee2;
+	point r_knee2;
+
 	for(int i = 0; i < l_leg.size(); i ++)
 	{
-		if(l_leg[i].m <= 0.383 * L && l_leg[i + 1].m > 0.383 * L)
+		if((l_leg[i].m - l_leg[lll].m) <= 0.227 * L && (l_leg[i + 1].m - l_leg[lll].m) > 0.227 * L)
 		{
 			l_knee = l_leg[i].cen;
-			joints.push_back(l_knee);
 			llstart = i;
 		}
-
-		else if (l_leg[i].m <= 0.156 * L && l_leg[i + 1].m > 0.156 * L)
-		{
-			l_ankle = l_leg[i].cen;
-			joints.push_back(l_ankle);
-		}
-
+		if(l_leg[i].m <= 0.383 * L && l_leg[i + 1].m > 0.383 * L)
+			l_knee2 = l_leg[i].cen;
 	}
+	l_knee = (l_knee + l_knee2) / 2;
+	joints.push_back(l_knee);
 
 	for(int i = 0; i < r_leg.size(); i ++)
 	{
-		if(r_leg[i].m <= 0.383 * L && r_leg[i + 1].m > 0.383 * L)
+		if((r_leg[i].m - r_leg[rrr].m) <= 0.227 * L && (r_leg[i + 1].m - r_leg[rrr].m) > 0.227 * L)
 		{
 			r_knee = r_leg[i].cen;
-			joints.push_back(r_knee);
 			rlstart = i;
 		}
-
-		else if (r_leg[i].m <= 0.156 * L && r_leg[i + 1].m > 0.156 * L)
-		{
-			r_ankle = r_leg[i].cen;
-			joints.push_back(r_ankle);
-		}
+		if(r_leg[i].m <= 0.383 * L && r_leg[i + 1].m > 0.383 * L)
+			r_knee2 = r_leg[i].cen;
 	}
+	r_knee = (r_knee + r_knee2) / 2;
+	joints.push_back(r_knee);
 
-	float line[6];
 	int size = 20 ;
+	float line[6];
 	float* j = new float[size * 3];
 	for(int i = llstart; i < llstart + size; i++)
 	{
@@ -1999,9 +2082,8 @@ int main(int argc, char *argv[])
 	cvFitLine(&mat, CV_DIST_L2, 0, 0.01, 0.01, line );
 	point l_dir{line[0], line[1], line[2]};
 	point ori{line[3], line[4], line[5]};
-	point l_hip = l_leg[llstart].cen - 0.5 * l_dir;
-	point lleg = l_leg[llstart].cen;
-	// joints.push_back(l_hip);
+	point l_hip = l_leg[llstart].cen - 0.5 * L * l_dir;
+	point l_hip2 = l_leg[llstart].cen - 0.5 * l_dir;
 
 	for(int i = rlstart; i < rlstart + size; i++)
 	{
@@ -2012,65 +2094,60 @@ int main(int argc, char *argv[])
 	mat = cvMat(1, size, CV_32FC3, j);
 	cvFitLine(&mat, CV_DIST_L2, 0, 0.01, 0.01, line );
 	point r_dir = point{line[0], line[1], line[2]};
-	point r_hip = r_leg[llstart].cen - 0.5 * r_dir;
-	point rleg = r_leg[llstart].cen;
-
-	// joints.push_back(r_hip);
+	point r_hip = r_leg[llstart].cen - 0.5 * L * r_dir;
+	point r_hip2 = r_leg[llstart].cen - 0.5 * r_dir;
 
 
 	point np = cross(N, MO);
 	float D = -np[0] * M[0] -np[1] * M[1] -np[2] * M[2];
 	float t = (np[0] * l_hip[0] + np[1] * l_hip[1] + np[2] * l_hip[2] + D) / (pow(np[0],2) + pow(np[1],2) + pow(np[2],2));
 	point l_hip_ = l_hip - t * np;
+	l_hip2 = project(l_hip2, np, D);
+	l_dir = l_hip_ - l_hip2;
 	t = (np[0] * r_hip[0] + np[1] * r_hip[1] + np[2] * r_hip[2] + D) / (pow(np[0],2) + pow(np[1],2) + pow(np[2],2));
 	point r_hip_ = r_hip - t * np;
+	r_hip2 = project(r_hip2, np, D);
+	r_dir = r_hip_ - r_hip2;
 
-	m_leg = m_leg - t * np;
+
+	m_leg = project(m_leg, np, D);
+	// joints.push_back(m_leg);
 	point left = delta;
 	point right = -delta;
-	t = (((m_leg[0] - m_leg[1]) - (l_hip_[0] - l_hip_[1]))/(left[0] - left[1])
-					- ((m_leg[1] - m_leg[2]) - (l_hip_[1] - l_hip_[2]))/(left[1] - left[2]))
-					/ ((l_dir[0] - l_dir[1]) / (left[0] - left[1]) - (l_dir[1] - l_dir[2]) / (left[1] - left[2]));
+	// t = (((m_leg[0] - m_leg[1]) - (l_hip_[0] - l_hip_[1]))/(left[0] - left[1])
+	// 				- ((m_leg[1] - m_leg[2]) - (l_hip_[1] - l_hip_[2]))/(left[1] - left[2]))
+	// 				/ ((l_dir[0] - l_dir[1]) / (left[0] - left[1]) - (l_dir[1] - l_dir[2]) / (left[1] - left[2]));
+	t = line_intersect(m_leg, l_hip_, left, l_dir);
 	l_hip = l_hip_ + t * l_dir;
+	t = (np[0] * l_hip[0] + np[1] * l_hip[1] + np[2] * l_hip[2] + D) / (pow(np[0],2) + pow(np[1],2) + pow(np[2],2));
+	l_hip = l_hip - t * np;
 	joints.push_back(l_hip);
-	t = (((m_leg[0] - m_leg[1]) - (r_hip_[0] - r_hip_[1]))/(right[0] - right[1])
-					- ((m_leg[1] - m_leg[2]) - (r_hip_[1] - r_hip_[2]))/(right[1] - right[2]))
-					/ ((r_dir[0] - r_dir[1]) / (right[0] - right[1]) - (r_dir[1] - r_dir[2]) / (right[1] - right[2]));
+	t = line_intersect(m_leg, r_hip_, right, r_dir);
 	r_hip = r_hip_ + t * r_dir;
+	t = (np[0] * r_hip[0] + np[1] * r_hip[1] + np[2] * r_hip[2] + D) / (pow(np[0],2) + pow(np[1],2) + pow(np[2],2));
+	r_hip = r_hip - t * np;
 	joints.push_back(r_hip);
 
 	//
 	// // Output the skeleton
 	ofstream write;
-	write.open("./output/skeleton.ply");
-	write << "ply" << std::endl;
-	write << "format ascii 1.0" << std::endl;
-	write << "element vertex 18"  << std::endl;
-	write << "property float x" << std::endl;
-	write << "property float y" << std::endl;
-	write << "property float z" << std::endl;
-	write << "property uchar red" << std::endl;
-	write << "property uchar green" << std::endl;
-	write << "property uchar blue" << std::endl;
-	write << "end_header" << std::endl;
-	write << r_ankle[0] << " " << r_ankle[1] << " " << r_ankle[2] << " 0 255 255" << "\n";
-	write << r_knee[0] << " " << r_knee[1] << " " << r_knee[2] << " 0 255 255" << "\n";
-	write << r_hip_[0] << " " << r_hip_[1] << " " << r_hip_[2] << " 0 255 255" << "\n";
-	write << l_hip_[0] << " " << l_hip_[1] << " " << l_hip_[2] << " 0 255 255" << "\n";
-	write << l_knee[0] << " " << l_knee[1] << " " << l_knee[2] << " 0 255 255" << "\n";
-	write << l_ankle[0] << " " << l_ankle[1] << " " << l_ankle[2] << " 0 255 255" << "\n";
-	write << m_hip[0] << " " << m_hip[1] << " " << m_hip[2] << " 0 255 255" << "\n";
-	write << clav[0] << " " << clav[1] << " " << clav[2] << " 0 255 255" << "\n";
-	write << neck[0] << " " << neck[1] << " " << neck[2] << " 0 255 255" << "\n";
-	write << head[0] << " " << head[1] << " " << head[2] << " 0 255 255" << "\n";
-	write << r_wrist[0] << " " << r_wrist[1] << " " << r_wrist[2] << " 0 255 255" << "\n";
-	write << r_elbow[0] << " " << r_elbow[1] << " " << r_elbow[2] << " 0 255 255" << "\n";
-	write << F[0] << " " << F[1] << " " << F[2] << " 0 255 255" << "\n";
-	write << E[0] << " " << E[1] << " " << E[2] << " 0 255 255" << "\n";
-	write << l_elbow[0] << " " << l_elbow[1] << " " << l_elbow[2] << " 0 255 255" << "\n";
-	write << l_wrist[0] << " " << l_wrist[1] << " " << l_wrist[2] << " 0 255 255" << "\n";
-	write << "0 0 0 255 255" << "\n";
-	write << "0 0 0 255 255" << "\n";
+	write.open("./output/skeleton.txt");
+	write << r_ankle[0] << " " << r_ankle[1] << " " << r_ankle[2] << "\n";
+	write << r_knee[0] << " " << r_knee[1] << " " << r_knee[2] << "\n";
+	write << r_hip_[0] << " " << r_hip_[1] << " " << r_hip_[2] << "\n";
+	write << l_hip_[0] << " " << l_hip_[1] << " " << l_hip_[2] << "\n";
+	write << l_knee[0] << " " << l_knee[1] << " " << l_knee[2] << "\n";
+	write << l_ankle[0] << " " << l_ankle[1] << " " << l_ankle[2] << "\n";
+	write << m_hip[0] << " " << m_hip[1] << " " << m_hip[2] << "\n";
+	write << clav[0] << " " << clav[1] << " " << clav[2] << "\n";
+	write << neck[0] << " " << neck[1] << " " << neck[2] << "\n";
+	write << head[0] << " " << head[1] << " " << head[2] << "\n";
+	write << r_wrist[0] << " " << r_wrist[1] << " " << r_wrist[2] << "\n";
+	write << r_elbow[0] << " " << r_elbow[1] << " " << r_elbow[2] << "\n";
+	write << F[0] << " " << F[1] << " " << F[2] << "\n";
+	write << E[0] << " " << E[1] << " " << E[2] << "\n";
+	write << l_elbow[0] << " " << l_elbow[1] << " " << l_elbow[2] << "\n";
+	write << l_wrist[0] << " " << l_wrist[1] << " " << l_wrist[2] << "\n";
 
 	write.close();
 
