@@ -68,9 +68,9 @@ bool avoid_tstrips = false;
 int point_size = 1, line_width = 1;
 // ==================================
 bool DRAW_CHARACTERISTIC = 0;
-bool DRAW_LEVEL_SET = 0;
+bool DRAW_LEVEL_SET = 1;
 bool DRAW_CENTER = 1;
-bool DRAW_JOINT = 1;
+bool DRAW_JOINT = 0;
 // ==================================
 std::vector<point> joints;
 // Struct
@@ -479,10 +479,10 @@ void redraw()
 	if (DRAW_LEVEL_SET)
 	{
 		glPushMatrix();
-		glPointSize(2.0f);
+		glPointSize(1.5f);
 		glBegin(GL_POINTS);
-		glColor3f(0.0f, 1.0f, 0.0f);
-		for (int i = 1; i < 140; i++)
+		glColor3f(0.0f, 0.0f, 1.0f);
+		for (int i = 1; i < 140; i+=2)
 		{
 			for (int j = 0; j < 500; j++)
 			{
@@ -494,8 +494,8 @@ void redraw()
 			}
 		}
 
-		glColor3f(0.0f, 1.0f, 1.0f);
-		for (int i = 1; i < 90; i++)
+		glColor3f(0.0f, 0.0f, 1.0f);
+		for (int i = 1; i < 90; i+=2)
 		{
 			for (int j = 0; j < 500; j++)
 			{
@@ -507,7 +507,7 @@ void redraw()
 			}
 		}
 
-		for (int i = 1; i < 90; i++)
+		for (int i = 1; i < 90; i+=2)
 		{
 			for (int j = 0; j < 500; j++)
 			{
@@ -519,29 +519,29 @@ void redraw()
 			}
 		}
 
-		// for (int i = 1; i < 120; i++)
-		// {
-		// 	for (int j = 0; j < 500; j++)
-		// 	{
-		// 		if(LS_l_leg[i].flag[j] == l_leg[i].flag)
-		// 		{
-		// 			point tmp = LS_l_leg[i].pos[j];
-		// 			glVertex3f(tmp[0], tmp[1], tmp[2]);
-		// 		}
-		// 	}
-		// }
-		//
-		// for (int i = 1; i < 120; i++)
-		// {
-		// 	for (int j = 0; j < 500; j++)
-		// 	{
-		// 		if(LS_r_leg[i].flag[j] == r_leg[i].flag)
-		// 		{
-		// 			point tmp = LS_r_leg[i].pos[j];
-		// 			glVertex3f(tmp[0], tmp[1], tmp[2]);
-		// 		}
-		// 	}
-		// }
+		for (int i = 1; i < 120; i+=2)
+		{
+			for (int j = 0; j < 500; j++)
+			{
+				if(LS_l_leg[i].flag[j] == l_leg[i].flag)
+				{
+					point tmp = LS_l_leg[i].pos[j];
+					glVertex3f(tmp[0], tmp[1], tmp[2]);
+				}
+			}
+		}
+
+		for (int i = 1; i < 120; i+=2)
+		{
+			for (int j = 0; j < 500; j++)
+			{
+				if(LS_r_leg[i].flag[j] == r_leg[i].flag)
+				{
+					point tmp = LS_r_leg[i].pos[j];
+					glVertex3f(tmp[0], tmp[1], tmp[2]);
+				}
+			}
+		}
 		glEnd();
 		glPopMatrix();
 	}
@@ -553,7 +553,7 @@ void redraw()
 		glPushMatrix();
 		glPointSize(5.0f);
 		glBegin(GL_POINTS);
-		glColor3f(1.0f, 1.0f, 0.5f);
+		glColor3f(1.0f, 0.0f, 0.0f);
 		for (int i = 0; i < trunk.size(); i++)
 		{
 					glVertex3f(trunk[i].cen[0], trunk[i].cen[1], trunk[i].cen[2]);
@@ -1201,7 +1201,7 @@ int DJ(TriMesh* themesh, int start, float** dist_mat, float* sum_dist, bool M, f
 			{
 				for(int j = 0; j < id + 1; j++)
 				{
-					if (morse_p[j][i] < 0.8)
+					if (morse_p[j][i] < 0.2)
 						f = 0;
 				}
 				if (f == 1)
@@ -1571,7 +1571,8 @@ void extracting(float step, int level, float* morse, std::vector<bodypart>& body
 	int ind = -1;
 	for(int i = 0; i < 5; i++)
 	{
-		if (tmp[i] < min)
+		cout << tmp[i] <<endl;
+		if (tmp[i] < min && i != 0)
 		{
 			min = tmp[i];
 			ind = i;
@@ -1648,6 +1649,58 @@ point project(point ori, point np, float D)
 	return ori_;
 }
 
+int bending(vector<bodypart>& body, int start, int end)
+{
+	priority_queue<pq_elem> can_q;
+	// find left ankle
+	for (int i = start; i < end; i++ )
+	{
+		float dist_sum = 0;
+		point d_P1P = body[start].cen - body[i].cen;
+		point d_P2P = body[end].cen - body[i].cen;
+		for(int j = start; j < i; j++)
+		{
+			dist_sum += dist_point_line(body[j].cen, body[i].cen, d_P1P);
+		}
+		for(int j = i; j < end; j++)
+		{
+			dist_sum += dist_point_line(body[j].cen, body[i].cen, d_P2P);
+		}
+		can_q.push(pq_elem(i, dist_sum));
+	}
+	int lll = can_q.top().id;
+	return lll;
+}
+
+vector<point> fitLine(vector<bodypart> body, int start, int size)
+{
+	vector<point> out;
+	float line[6];
+	float* j = new float[size * 3];
+	for(int i = start; i < start + size; i++)
+	{
+		j[3*(i - start)] = body[i].cen[0];
+		j[3*(i - start) + 1] = body[i].cen[1];
+		j[3*(i - start) + 2] = body[i].cen[2];
+	}
+	CvMat mat = cvMat(1, size, CV_32FC3, j);
+	cvFitLine(&mat, CV_DIST_L2, 0, 0.01, 0.01, line );
+	point dir{line[0], line[1], line[2]};
+	point ori{line[3], line[4], line[5]};
+	out.push_back(dir);
+	out.push_back(ori);
+	return out;
+}
+
+int findCenInd(vector<bodypart> body, float scale, float L)
+{
+	for(int i = 0; i < body.size(); i ++)
+	{
+		if(body[i].m <= scale * L && body[i + 1].m > scale * L)
+			return i;
+	}
+	return 0;
+}
 int main(int argc, char *argv[])
 {
 	unsigned initDisplayMode = GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH;
@@ -1856,12 +1909,14 @@ int main(int argc, char *argv[])
 	// int ind_O = 0;
 	point m_leg;
 	float max_area = 0;
+	vector<float> trunk_area(10);
 	for(int i = 0; i < trunk.size(); i ++)
 	{
+		trunk_area.push_back(get_area(LS_trunk, i, trunk[i].cen, trunk[i].flag));
 		if(trunk[i].m <= 0.168 * L && trunk[i + 1].m > 0.168 * L)
 		{
 			neck = trunk[i].cen;
-			joints.push_back(neck);
+			// joints.push_back(neck);
 		}
 		else if(trunk[i].m <= 0.238 * L && trunk[i + 1].m > 0.238 * L)
 		{
@@ -1887,8 +1942,23 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	vector<float> area_ratio(1);
+	for (int i = 11; i < 11 + trunk.size() / 3; ++i){
+		float prev_area = 0;
+		for(int j = i - 10; j < i; j++){
+			prev_area += trunk_area[j];
+		}
+		float ratio = prev_area / trunk_area[i];
+		area_ratio.push_back(ratio);
+	}
 
-
+	// for(int i = 0; i < area_ratio.size(); i++){
+	// 	std::cout << area_ratio[i] << '\n';
+	// }
+	vector<float>::iterator biggest = max_element(begin(area_ratio), end(area_ratio));
+	int dist = distance(begin(area_ratio), biggest);
+	joints.push_back(trunk[dist].cen);
+	// std::cout << "dist: " << dist << '\n';
 	// // Identify Left & Right
 	float* tmp1 = NULL;
 	std::vector<bodypart> tmp2;
@@ -1896,7 +1966,6 @@ int main(int argc, char *argv[])
 	point MO = O - M;
 	point face_direc = meshes[0]->vertices[right_foot] - r_leg[89].cen;
 	point left_direc = cross(MO, face_direc);
-	std::cout << "here" << std::endl;
 	if(dot(meshes[0]->vertices[right_hand] - O, left_direc) > 0)
 	{
 		tmp1 = morse_l_hand;
@@ -1942,33 +2011,51 @@ int main(int argc, char *argv[])
 	point l_wrist;
 	point r_elbow;
 	point l_elbow;
-	for(int i = 0; i < l_arm.size(); i ++)
-	{
-		if(l_arm[i].m <= 0.285 * L && l_arm[i + 1].m > 0.285 * L)
-		{
-			joints.push_back(l_arm[i].cen); // 手肘
-			l_elbow = l_arm[i].cen;
-		}
-		else if (l_arm[i].m <= 0.120 * L && l_arm[i + 1].m > 0.120 * L)
-		{
-			joints.push_back(l_arm[i].cen);  //手腕
-			l_wrist = l_arm[i].cen;
-		}
+	// for(int i = 0; i < l_arm.size(); i ++)
+	// {
+	// 	if(l_arm[i].m <= 0.285 * L && l_arm[i + 1].m > 0.285 * L)
+	// 	{
+	// 		joints.push_back(l_arm[i].cen); // 手肘
+	// 		l_elbow = l_arm[i].cen;
+	// 	}
+	// 	else if (l_arm[i].m <= 0.120 * L && l_arm[i + 1].m > 0.120 * L)
+	// 	{
+	// 		joints.push_back(l_arm[i].cen);  //手腕
+	// 		l_wrist = l_arm[i].cen;
+	// 	}
+	// }
+	int l_e_start = findCenInd(l_arm, 0.2, L);
+	int l_e_end = findCenInd(l_arm, 0.32, L);
+	int r_e_start = findCenInd(r_arm, 0.2, L);
+	int r_e_end = findCenInd(r_arm, 0.32, L);
+	int l_elbow_ind = bending(l_arm, l_e_start, l_e_end);
+	int r_elbow_ind = bending(r_arm, r_e_start, r_e_end);
+	point l_e_1 = fitLine(l_arm, l_elbow_ind - 10, 10)[0];
+	point l_e_2 = fitLine(l_arm, l_elbow_ind, 10)[0];
+	point r_e_1 = fitLine(r_arm, r_elbow_ind - 10, 10)[0];
+	point r_e_2 = fitLine(r_arm, r_elbow_ind, 10)[0];
+	cout << "value: " << dot(l_e_1, l_e_2)/(norm(l_e_1)*norm(l_e_2)) << endl;
+	if (dot(l_e_1, l_e_2)/(norm(l_e_1)*norm(l_e_2)) < 0.98){
+		cout << "l_elbow by bending" << endl;
+		l_elbow = l_arm[l_elbow_ind].cen;
+	}
+	else{
+		l_elbow = l_arm[findCenInd(l_arm, 0.285, L)].cen;
+	}
+	if (dot(r_e_1, r_e_2)/(norm(r_e_1)*norm(r_e_2)) < 0.98){
+		cout << "r_elbow by bending" << endl;
+		r_elbow = r_arm[r_elbow_ind].cen;
+	}
+	else{
+		r_elbow = r_arm[findCenInd(r_arm, 0.285, L)].cen;
 	}
 
-	for(int i = 0; i < r_arm.size(); i ++)
-	{
-		if(r_arm[i].m <= 0.285 * L && r_arm[i + 1].m > 0.285 * L)
-		{
-			joints.push_back(r_arm[i].cen);
-			r_elbow = r_arm[i].cen;
-		}
-		else if (r_arm[i].m <= 0.120 * L && r_arm[i + 1].m > 0.120 * L)
-		{
-			joints.push_back(r_arm[i].cen);
-			r_wrist = r_arm[i].cen;
-		}
-	}
+	l_wrist = l_arm[findCenInd(l_arm, 0.120, L)].cen;
+	r_wrist = r_arm[findCenInd(r_arm, 0.120, L)].cen;
+	joints.push_back(l_elbow);
+	joints.push_back(l_wrist);
+	joints.push_back(r_elbow);
+	joints.push_back(r_wrist);
 
 	int llstart = 0;
 	int rlstart = 0;
@@ -1976,98 +2063,102 @@ int main(int argc, char *argv[])
 	point r_knee;
 	point l_ankle;
 	point r_ankle;
-
-
-
-	// Based on distance 求脚踝ankle位置
-	int l_ankle_start = 0;
-	int l_ankle_end = 0;
-	int r_ankle_start = 0;
-	int r_ankle_end = 0;
-	for(int i = 0; i < l_arm.size(); i ++)
-	{
-		if(l_leg[i].m <= 0.1 * L && l_leg[i + 1].m > 0.1 * L)
-			l_ankle_start = i;
-		if(l_leg[i].m <= 0.225 * L && l_leg[i + 1].m > 0.225 * L)
-			l_ankle_end = i;
-	}
-	for(int i = 0; i < r_arm.size(); i ++)
-	{
-		if(r_leg[i].m <= 0.1 * L && r_leg[i + 1].m > 0.1 * L)
-			r_ankle_start = i;
-		if(r_leg[i].m <= 0.225 * L && r_leg[i + 1].m > 0.225 * L)
-			r_ankle_end = i;
-	}
-	priority_queue<pq_elem> ankle_q;
-	// find left ankle
-	for (int i = l_ankle_start; i < l_ankle_end; i++ )
-	{
-		float dist_sum = 0;
-		point d_P1P = l_leg[l_ankle_start].cen - l_leg[i].cen;
-		point d_P2P = l_leg[l_ankle_end].cen - l_leg[i].cen;
-		for(int j = l_ankle_start; j < i; j++)
-		{
-			dist_sum += dist_point_line(l_leg[j].cen, l_leg[i].cen, d_P1P);
-		}
-		for(int j = i; j < l_ankle_end; j++)
-		{
-			dist_sum += dist_point_line(l_leg[j].cen, l_leg[i].cen, d_P2P);
-		}
-		ankle_q.push(pq_elem(i, dist_sum));
-	}
-	int lll =ankle_q.top().id;
-	l_ankle = l_leg[lll].cen;
-	joints.push_back(l_ankle);
-
-// find right ankle
-	priority_queue<pq_elem> ankle_q2;
-	for (int i = r_ankle_start; i < r_ankle_end; i++ )
-	{
-		float dist_sum = 0;
-		point d_P1P = r_leg[r_ankle_start].cen - r_leg[i].cen;
-		point d_P2P = r_leg[r_ankle_end].cen - r_leg[i].cen;
-		for(int j = r_ankle_start; j < i; j++)
-		{
-			dist_sum += dist_point_line(r_leg[j].cen, r_leg[i].cen, d_P1P);
-		}
-		for(int j = i; j < r_ankle_end; j++)
-		{
-			dist_sum += dist_point_line(r_leg[j].cen, r_leg[i].cen, d_P2P);
-		}
-		ankle_q2.push(pq_elem(i, dist_sum));
-	}
-	int rrr =ankle_q2.top().id;
-	r_ankle = r_leg[rrr].cen;
-	joints.push_back(r_ankle);
-	// find kneee
 	point l_knee2;
 	point r_knee2;
 
+
+	// Based on distance 求脚踝ankle位置
+	int l_ankle_start = 0, l_ankle_end = 0, r_ankle_start = 0, r_ankle_end = 0;
+	int l_knee_start = 0, l_knee_end = 0, r_knee_start = 0, r_knee_end = 0;
 	for(int i = 0; i < l_leg.size(); i ++)
 	{
-		if((l_leg[i].m - l_leg[lll].m) <= 0.227 * L && (l_leg[i + 1].m - l_leg[lll].m) > 0.227 * L)
+		if(l_leg[i].m <= 0.05 * L && l_leg[i + 1].m > 0.05 * L)
 		{
-			l_knee = l_leg[i].cen;
-			llstart = i;
+			l_ankle_start = i;
+			joints.push_back(l_leg[i].cen);
 		}
-		if(l_leg[i].m <= 0.383 * L && l_leg[i + 1].m > 0.383 * L)
-			l_knee2 = l_leg[i].cen;
+		if(l_leg[i].m <= 0.35 * L && l_leg[i + 1].m > 0.35 * L){
+			l_ankle_end = i;
+			l_knee_start = i;
+		}
+		if(l_leg[i].m <= 0.45 * L && l_leg[i + 1].m > 0.45 * L)
+			l_knee_end = i;
 	}
-	l_knee = (l_knee + l_knee2) / 2;
-	joints.push_back(l_knee);
-
 	for(int i = 0; i < r_leg.size(); i ++)
 	{
-		if((r_leg[i].m - r_leg[rrr].m) <= 0.227 * L && (r_leg[i + 1].m - r_leg[rrr].m) > 0.227 * L)
-		{
-			r_knee = r_leg[i].cen;
-			rlstart = i;
+		if(r_leg[i].m <= 0.1 * L && r_leg[i + 1].m > 0.1 * L){
+			r_ankle_start = i;
+			continue;
 		}
-		if(r_leg[i].m <= 0.383 * L && r_leg[i + 1].m > 0.383 * L)
-			r_knee2 = r_leg[i].cen;
+		if(r_leg[i].m <= 0.225 * L && r_leg[i + 1].m > 0.225 * L){
+			r_ankle_end = i;
+			continue;
+		}
+		if(r_leg[i].m <= 0.35 * L && r_leg[i + 1].m > 0.35 * L){
+			r_knee_start = i;
+			continue;
+		}
+		if(r_leg[i].m <= 0.45 * L && r_leg[i + 1].m > 0.45 * L)
+			r_knee_end = i;
+			continue;
 	}
-	r_knee = (r_knee + r_knee2) / 2;
-	joints.push_back(r_knee);
+
+	// find left ankle
+	int lll = bending(l_leg, l_ankle_start, l_ankle_end);
+	l_ankle = l_leg[lll].cen;
+	joints.push_back(l_ankle);
+	// find right ankle
+	int rrr = bending(r_leg, r_ankle_start, r_ankle_end);
+	r_ankle = r_leg[rrr].cen;
+	joints.push_back(r_ankle);
+	// find kneee
+
+	int l_knee_ind = bending(l_leg, l_knee_start, l_knee_end);
+	int r_knee_ind = bending(r_leg, r_knee_start, r_knee_end);
+	point l_k_1 = fitLine(l_leg, l_knee_ind - 20, 20)[0];
+	point l_k_2 = fitLine(l_leg, l_knee_ind, 20)[0];
+	point r_k_1 = fitLine(r_leg, r_knee_ind - 20, 20)[0];
+	point r_k_2 = fitLine(r_leg, r_knee_ind, 20)[0];
+
+	if (dot(l_k_1, l_k_2)/(norm(l_k_1)*norm(l_k_2)) < 0.9){
+		cout << "l_knee by bending" << endl;
+		joints.push_back(l_leg[l_knee_ind].cen);
+		llstart = l_knee_ind;
+	}
+	else {
+		for(int i = 0; i < l_leg.size(); i ++)
+		{
+			if((l_leg[i].m - l_leg[lll].m) <= 0.227 * L && (l_leg[i + 1].m - l_leg[lll].m) > 0.227 * L)
+			{
+				l_knee = l_leg[i].cen;
+				llstart = i;
+			}
+			if(l_leg[i].m <= 0.383 * L && l_leg[i + 1].m > 0.383 * L)
+				l_knee2 = l_leg[i].cen;
+		}
+		l_knee = (l_knee + l_knee2) / 2;
+		joints.push_back(l_knee);
+	}
+
+	if (dot(r_k_1, r_k_2)/(norm(r_k_1)*norm(r_k_2)) < 0.9){
+		joints.push_back(r_leg[r_knee_ind].cen);
+		cout << "r_knee by bending" << endl;
+		rlstart = r_knee_ind;
+	}
+	else{
+		for(int i = 0; i < r_leg.size(); i ++)
+		{
+			if((r_leg[i].m - r_leg[rrr].m) <= 0.227 * L && (r_leg[i + 1].m - r_leg[rrr].m) > 0.227 * L)
+			{
+				r_knee = r_leg[i].cen;
+				rlstart = i;
+			}
+			if(r_leg[i].m <= 0.383 * L && r_leg[i + 1].m > 0.383 * L)
+				r_knee2 = r_leg[i].cen;
+		}
+		r_knee = (r_knee + r_knee2) / 2;
+		joints.push_back(r_knee);
+	}
 
 	int size = 20 ;
 	float line[6];
@@ -2134,8 +2225,8 @@ int main(int argc, char *argv[])
 	write.open("./output/skeleton.txt");
 	write << r_ankle[0] << " " << r_ankle[1] << " " << r_ankle[2] << "\n";
 	write << r_knee[0] << " " << r_knee[1] << " " << r_knee[2] << "\n";
-	write << r_hip_[0] << " " << r_hip_[1] << " " << r_hip_[2] << "\n";
-	write << l_hip_[0] << " " << l_hip_[1] << " " << l_hip_[2] << "\n";
+	write << r_hip[0] << " " << r_hip[1] << " " << r_hip[2] << "\n";
+	write << l_hip[0] << " " << l_hip[1] << " " << l_hip[2] << "\n";
 	write << l_knee[0] << " " << l_knee[1] << " " << l_knee[2] << "\n";
 	write << l_ankle[0] << " " << l_ankle[1] << " " << l_ankle[2] << "\n";
 	write << m_hip[0] << " " << m_hip[1] << " " << m_hip[2] << "\n";

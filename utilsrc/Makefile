@@ -1,6 +1,6 @@
 DESTDIR = ../bin.$(UNAME)
-INCLUDES = -I../include -I.
-LIBDIR = -L../lib.$(UNAME)
+INCLUDES = -I../include -I. -I/usr/include/opencv
+LIBDIR = -L../lib.$(UNAME) -L/usr/local/lib -L/usr/lib/x86_64-linux-gnu
 
 include ../Makerules
 
@@ -30,7 +30,7 @@ PROGS = $(OTHERPROGS) $(VIEWPROG)
 default: $(PROGS)
 
 
-LIBS += -ltrimesh
+LIBS += -ltrimesh -lopencv_core -lopencv_imgproc -lopencv_highgui -lopencv_ml
 $(PROGS) : -ltrimesh
 
 $(VIEWPROG) : $(VIEWOFILES)
